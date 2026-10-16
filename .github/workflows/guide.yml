@@ -1,0 +1,38 @@
+name: Rebuild TV guide
+on:
+  schedule:
+    - cron: "0 9 * * *"     # 4 AM Central (9:00 UTC)
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Write private settings from secrets (never committed)
+        env:
+          XT_SERVER: ${{ secrets.XTREAM_SERVER }}
+          XT_USER: ${{ secrets.XTREAM_USERNAME }}
+          XT_PASS: ${{ secrets.XTREAM_PASSWORD }}
+          TMDB: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          printf 'server %s\nusername %s\npassword %s\n' "$XT_SERVER" "$XT_USER" "$XT_PASS" > xtream.txt
+          printf '%s' "$TMDB" > tmdb_key.txt
+      - name: Build playlist + guide
+        run: |
+          python build_merged.py
+          python build_final.py
+          python build_epg.py
+      - name: Commit guide only
+        run: |
+          rm -f xtream.txt tmdb_key.txt combined*.m3u
+          git config user.name "guide-bot"
+          git config user.email "guide-bot@users.noreply.github.com"
+          git add guide.xml.gz
+          git diff --cached --quiet || git commit -m "Nightly guide $(date -u +%F)"
+          git push

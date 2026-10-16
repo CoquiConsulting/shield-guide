@@ -1,0 +1,9 @@
+﻿xtream.txt
+tmdb_key.txt
+combined*.m3u
+*.csv
+*.txt
+!requirements.txt
+__pycache__/
+tmdb_cache.json
+
