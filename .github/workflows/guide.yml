@@ -1,7 +1,8 @@
 name: Rebuild TV guide
+# Fallback only: builds an (unchecked) guide when the PC's health-checked run didn't push one in the last 20 hours.
 on:
   schedule:
-    - cron: "0 9 * * *"     # 4 AM Central (9:00 UTC)
+    - cron: "0 14 * * *"    # 8 AM Central (14:00 UTC), after the PC's 4:30 AM run should be done
   workflow_dispatch: {}
 permissions:
   contents: write
@@ -11,10 +12,21 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+        with:
+          fetch-depth: 100
+      - name: Skip if the PC already pushed a fresh guide
+        id: gate
+        run: |
+          last=$(git log -1 -F --grep="(PC, health-checked)" --format=%ct -- guide.xml.gz)
+          age=$(( ( $(date +%s) - ${last:-0} ) / 3600 ))
+          echo "Last PC guide pushed $age hours ago"
+          if [ "$age" -lt 20 ]; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "PC guide is fresh - skipping fallback build"; fi
+      - if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Write private settings from secrets (never committed)
+        if: steps.gate.outputs.skip != 'true'
         env:
           XT_SERVER: ${{ secrets.XTREAM_SERVER }}
           XT_USER: ${{ secrets.XTREAM_USERNAME }}
@@ -24,11 +36,13 @@ jobs:
           printf 'server %s\nusername %s\npassword %s\n' "$XT_SERVER" "$XT_USER" "$XT_PASS" > xtream.txt
           printf '%s' "$TMDB" > tmdb_key.txt
       - name: Build playlist + guide
+        if: steps.gate.outputs.skip != 'true'
         run: |
           python build_merged.py
           python build_final.py
           python build_epg.py
       - name: Commit guide only
+        if: steps.gate.outputs.skip != 'true'
         run: |
           rm -f xtream.txt tmdb_key.txt combined*.m3u
           git config user.name "guide-bot"
