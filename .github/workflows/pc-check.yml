@@ -1,0 +1,23 @@
+name: PC nightly check
+# Fails (and GitHub emails the account) if the PC's health-checked guide hasn't been pushed in 26 hours.
+on:
+  schedule:
+    - cron: "0 13 * * *"     # 7 AM Central (13:00 UTC)
+  workflow_dispatch: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 100
+      - name: Check age of last PC guide
+        run: |
+          last=$(git log -1 -F --grep="(PC, health-checked)" --format=%ct -- guide.xml.gz)
+          age=$(( ( $(date +%s) - ${last:-0} ) / 3600 ))
+          echo "Last PC guide pushed $age hours ago"
+          if [ "$age" -gt 26 ]; then
+            echo "::error::PC nightly run has not pushed a guide in $age hours - check the PC and nightly_log.txt"
+            exit 1
+          fi
